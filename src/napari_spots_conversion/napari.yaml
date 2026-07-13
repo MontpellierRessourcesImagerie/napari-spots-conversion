@@ -1,0 +1,15 @@
+name: napari-spots-conversion
+display_name: Spots conversion
+# use 'hidden' to remove plugin from napari hub search results
+visibility: public
+# see https://napari.org/stable/plugins/technical_references/manifest.html#fields for valid categories
+# categories: []
+contributions:
+  commands:
+    - id: napari-spots-conversion.spots_conversion_widget
+      python_name: napari_spots_conversion.widget:SpotsConversionWidget
+      title: Spots conversion
+  widgets:
+    - command: napari-spots-conversion.spots_conversion_widget
+      display_name: Spots conversion
+  
