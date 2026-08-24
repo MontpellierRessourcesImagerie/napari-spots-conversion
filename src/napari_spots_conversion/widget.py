@@ -806,7 +806,7 @@ class SpotsConversionWidget(QWidget):
 
         spots_layer.data = DataUtils.spots_df_to_numpy(dataframe)
         spots_layer.features = dataframe
-        spots_layer.border_color = spots_layer.metadata.get("lut", "gray")
+        spots_layer.border_color = [spots_layer.metadata.get("lut", "gray")] * len(dataframe)
 
     def bind_tracks(self):
         birth, conversion = self.fetch_track_layers()
@@ -892,39 +892,43 @@ class SpotsConversionWidget(QWidget):
             bound_tracks.to_csv(export_path, index=False)
 
 
-def run_full():
+def add_images(viewer, widget):
     import tifffile as tiff
-    import pandas as pd
 
-    viewer = napari.Viewer()
-    widget = SpotsConversionWidget(viewer=viewer)
-    viewer.window.add_dock_widget(widget)
-
+    # --- Adding first channel
     c1_path = "/home/clement/Documents/projects/2220-yeasts-spots-overlap/draft/2026-06-17-dump/c1.tif"
     c1 = tiff.imread(c1_path)
     viewer.add_image(c1, name="c1", blending="additive", colormap="green")
 
+    # --- Adding second channel
     c2_path = "/home/clement/Documents/projects/2220-yeasts-spots-overlap/draft/2026-06-17-dump/c2.tif"
     c2 = tiff.imread(c2_path)
     viewer.add_image(c2, name="c2", blending="additive", colormap="red")
 
-    raw_labels_path = "/home/clement/Documents/projects/2220-yeasts-spots-overlap/draft/2026-06-17-dump/c1_labels.tif"
-    raw_labels = tiff.imread(raw_labels_path)
-    viewer.add_labels(raw_labels, name=f"{widget.cells_prefix}c1", visible=False)
+    # raw_labels_path = "/home/clement/Documents/projects/2220-yeasts-spots-overlap/draft/2026-06-17-dump/c1_labels.tif"
+    # raw_labels = tiff.imread(raw_labels_path)
+    # viewer.add_labels(raw_labels, name=f"{widget.cells_prefix}c1", visible=False)
 
+    # --- Adding tracked cells
     tracked_path = "/home/clement/Documents/projects/2220-yeasts-spots-overlap/draft/2026-06-17-dump/c1_tracked.tif"
     tracked_labels = tiff.imread(tracked_path)
     viewer.add_labels(tracked_labels, name=f"{widget.tracked_cells_prefix}c1")
 
-    c1_spots_tracked_path = "/home/clement/Documents/projects/2220-yeasts-spots-overlap/draft/2026-06-17-dump/c1_tracked_spots_features.csv"
+
+def add_tracked_points(viewer, widget):
+    import pandas as pd
+
+    # --- Adding tracked spots for C1
+    c1_spots_tracked_path = "/home/clement/Documents/projects/2220-yeasts-spots-overlap/draft/2026-06-17-dump/features_c1.csv"
     c1_spots_tracked = pd.read_csv(c1_spots_tracked_path)
-    
+
     viewer.add_points(
         DataUtils.spots_df_to_numpy(c1_spots_tracked), 
         name=f"{widget.spots_prefix}c1", 
         face_color="transparent", 
         border_color="green", 
-        metadata={"lut": "green"}
+        metadata={"lut": "green"},
+        features=c1_spots_tracked
     )
     
     viewer.add_tracks(
@@ -936,8 +940,8 @@ def run_full():
         hide_completed_tracks=True
     )
 
-
-    c2_spots_tracked_path = "/home/clement/Documents/projects/2220-yeasts-spots-overlap/draft/2026-06-17-dump/c2_tracked_spots_features.csv"
+    # --- Adding tracked spots for C2
+    c2_spots_tracked_path = "/home/clement/Documents/projects/2220-yeasts-spots-overlap/draft/2026-06-17-dump/features_c2.csv"
     c2_spots_tracked = pd.read_csv(c2_spots_tracked_path)
 
     viewer.add_points(
@@ -945,7 +949,8 @@ def run_full():
         name=f"{widget.spots_prefix}c2", 
         face_color="transparent", 
         border_color="red", 
-        metadata={"lut": "red"}
+        metadata={"lut": "red"},
+        features=c2_spots_tracked
     )
 
     viewer.add_tracks(
@@ -957,27 +962,13 @@ def run_full():
         hide_completed_tracks=True
     )
 
-    napari.run()
 
-
-def run():
-    import tifffile as tiff
-    import pandas as pd
-
+if __name__ == "__main__":
     viewer = napari.Viewer()
     widget = SpotsConversionWidget(viewer=viewer)
     viewer.window.add_dock_widget(widget)
 
-    c1_path = "/home/clement/Documents/projects/2220-yeasts-spots-overlap/draft/2026-06-17-dump/c1.tif"
-    c1 = tiff.imread(c1_path)
-    viewer.add_image(c1, name="c1", blending="additive", colormap="green")
-
-    c2_path = "/home/clement/Documents/projects/2220-yeasts-spots-overlap/draft/2026-06-17-dump/c2.tif"
-    c2 = tiff.imread(c2_path)
-    viewer.add_image(c2, name="c2", blending="additive", colormap="red")
+    add_images(viewer, widget)
+    add_tracked_points(viewer, widget)
 
     napari.run()
-
-
-if __name__ == "__main__":
-    run_full()
