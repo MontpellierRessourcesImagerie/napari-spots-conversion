@@ -36,6 +36,7 @@ from .operators import (
 )
 
 import pandas as pd
+from pathlib import Path
 
 
 class DataUtils:
@@ -392,12 +393,15 @@ class SpotsConversionWidget(QWidget):
 
         # Time factor
         h_layout = QHBoxLayout()
-        h_layout.addWidget(QLabel("Time factor"))
+        h_layout.addWidget(QLabel("Time factor (s)"))
         self.time_factor_input = QDoubleSpinBox()
         self.time_factor_input.setRange(0.0, 100.0)
         self.time_factor_input.setValue(1.0)
         h_layout.addWidget(self.time_factor_input)
         layout.addLayout(h_layout)
+
+        # Some vertical spacing
+        layout.addSpacing(20)
 
         # Export counts
         h_layout = QHBoxLayout()
@@ -531,11 +535,14 @@ class SpotsConversionWidget(QWidget):
         if new_layer_name in self.viewer.layers:
             self.viewer.layers[new_layer_name].data = result
         else:
-            self.viewer.add_labels(
+            _l = self.viewer.add_labels(
                 result, 
                 name=new_layer_name,
-                scale=layer.scale
+                scale=layer.scale,
+                units=layer.units,
+                axis_labels=layer.axis_labels
             )
+            _l.contour = 2
         self.current_operator = None
 
     def launch_cells_tracking(self):
@@ -572,11 +579,16 @@ class SpotsConversionWidget(QWidget):
         if new_layer_name in self.viewer.layers:
             self.viewer.layers[new_layer_name].data = result
         else:
-            self.viewer.add_labels(
+            _l = self.viewer.add_labels(
                 result, 
                 name=new_layer_name,
-                scale=raw_layer.scale
+                scale=raw_layer.scale,
+                units=raw_layer.units,
+                axis_labels=raw_layer.axis_labels,
             )
+            _l.contour = 2
+
+        raw_layer.visible = False
         self.current_operator = None
 
     def remove_cells(self):
@@ -596,11 +608,15 @@ class SpotsConversionWidget(QWidget):
         if save_name in self.viewer.layers:
             self.viewer.layers[save_name].data = target_layer.data.copy()
         else:
-            self.viewer.add_labels(
+            _l = self.viewer.add_labels(
                 target_layer.data.copy(),
                 name=save_name,
-                visible=False
+                visible=False,
+                axis_labels=target_layer.axis_labels,
+                scale=target_layer.scale,
+                units=target_layer.units,
             )
+            _l.contour = 2
 
         cells_removed = CellsUtils.remove_cells(target_layer.data, points_data)
         target_layer.data = cells_removed
@@ -622,11 +638,15 @@ class SpotsConversionWidget(QWidget):
         if save_name in self.viewer.layers:
             self.viewer.layers[save_name].data = target_layer.data.copy()
         else:
-            self.viewer.add_labels(
+            _l = self.viewer.add_labels(
                 target_layer.data.copy(),
                 name=save_name,
-                visible=False
+                visible=False,
+                axis_labels=target_layer.axis_labels,
+                scale=target_layer.scale,
+                units=target_layer.units,
             )
+            _l.contour = 2
 
         cells_merged = CellsUtils.merge_cells(target_layer.data, shapes_data)
         target_layer.data = cells_merged
@@ -677,8 +697,10 @@ class SpotsConversionWidget(QWidget):
                 pts, 
                 name=new_layer_name,
                 scale=img_layer.scale,
+                units=img_layer.units,
                 face_color="transparent",
                 border_color=img_layer.colormap.name,
+                axis_labels=img_layer.axis_labels,
                 metadata={
                     "lut": img_layer.colormap.name
                     }
@@ -727,6 +749,8 @@ class SpotsConversionWidget(QWidget):
                 name=new_layer_name,
                 features=tracked_pts_df,
                 scale=raw_spots_layer.scale,
+                units=raw_spots_layer.units,
+                axis_labels=raw_spots_layer.axis_labels,
                 graph=None,
                 tail_length=2,
                 hide_completed_tracks=True
@@ -832,11 +856,23 @@ class SpotsConversionWidget(QWidget):
         worker.finished.connect(self.finished_bind_tracks)
         worker.start()
 
+    def hide_spots_and_tracks(self):
+        birth, conversion = self.fetch_track_layers()
+        if birth is None or conversion is None:
+            return
+        birth.visible = False
+        conversion.visible = False
+        for l in [birth, conversion]:
+            spots_ch_name = l.name.replace(self.tracked_spots_prefix, self.spots_prefix)
+            if spots_ch_name in self.viewer.layers:
+                self.viewer.layers[spots_ch_name].visible = False
+
     def finished_bind_tracks(self, *args):
         if self.current_operator is None:
             raise ValueError("No operator is currently running.")
         
         bound_tracks = self.current_operator.get_bound_tracks()
+        layer_raw_cells = self.get_raw_cells_layer()
 
         if self.bound_tracks_name in self.viewer.layers:
             layer = self.viewer.layers[self.bound_tracks_name]
@@ -849,7 +885,10 @@ class SpotsConversionWidget(QWidget):
                 features=bound_tracks,
                 graph=None,
                 tail_length=2,
-                hide_completed_tracks=True
+                axis_labels=layer_raw_cells.axis_labels,
+                hide_completed_tracks=True,
+                scale=layer_raw_cells.scale,
+                units=layer_raw_cells.units,
             )
 
         lut = list(bound_tracks['phase'].map({0: "green", 1: "yellow", 2: "red"}).values)
@@ -864,9 +903,12 @@ class SpotsConversionWidget(QWidget):
                 name=self.bound_spots_name,
                 face_color="transparent",
                 border_color=lut,
-                features=bound_tracks
+                features=bound_tracks,
+                units=layer_raw_cells.units,
+                scale=layer_raw_cells.scale
             )
 
+        self.hide_spots_and_tracks()
         self.current_operator = None
 
     def export_counts(self):
@@ -881,15 +923,37 @@ class SpotsConversionWidget(QWidget):
             summarized = Summarizer.make_summary(bound_tracks, time_factor=time_factor)
             summarized.to_csv(export_path, index=False)
 
+    def find_tracked_spots_layers(self):
+        tracked_spots_layers = []
+        for layer in self.viewer.layers:
+            if layer.name.startswith(self.tracked_spots_prefix):
+                tracked_spots_layers.append(layer)
+        return tracked_spots_layers
+
     def export_details(self):
-        bound_tracks_layer_name = self.bound_tracks_name
-        if bound_tracks_layer_name not in self.viewer.layers:
+        target_layer_name = self.bound_tracks_name
+        layers = []
+
+        if target_layer_name in self.viewer.layers:
+            layers = [self.viewer.layers[target_layer_name]]
+        else:
             show_warning("No bound tracks layer found. Please run binding first.")
-            return
+            layers = self.find_tracked_spots_layers()
+
         export_path, _ = QFileDialog.getSaveFileName(self, "Export details to CSV", "", "CSV Files (*.csv);;All Files (*)")
-        bound_tracks = self.viewer.layers[bound_tracks_layer_name].features
-        if export_path:
-            bound_tracks.to_csv(export_path, index=False)
+        if export_path is None:
+            return
+        
+        export_path = Path(export_path)
+        for layer in layers:
+            full_path = export_path
+            if len(layers) > 1:
+                folder = export_path.parent
+                name = export_path.name
+                name = layer.name + "_" + name
+                full_path = folder / name
+            table = layer.features
+            table.to_csv(full_path, index=False)
 
 
 def add_images(viewer, widget):

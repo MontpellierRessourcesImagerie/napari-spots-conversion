@@ -35,7 +35,8 @@ dependencies = [
     "trackpy",
     "pandas",
     "xarray",
-    "cellpose-napari"
+    "cellpose-napari",
+    "spotiflow"
 ]
 
 [project.optional-dependencies]
